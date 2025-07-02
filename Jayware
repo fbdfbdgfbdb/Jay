@@ -1,0 +1,128 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
+
+-- GUI Setup (simplified for clarity)
+local ScreenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+ScreenGui.Name = "LockOnGui"
+
+local MainFrame = Instance.new("Frame", ScreenGui)
+MainFrame.Size = UDim2.new(0, 300, 0, 150)
+MainFrame.Position = UDim2.new(0.5, -150, 0.5, -75)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+local Title = Instance.new("TextLabel", MainFrame)
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Title.Text = "Lock-On GUI"
+Title.TextColor3 = Color3.new(1,1,1)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 20
+Title.TextXAlignment = Enum.TextXAlignment.Center
+Title.TextYAlignment = Enum.TextYAlignment.Center
+
+local PredictionLabel = Instance.new("TextLabel", MainFrame)
+PredictionLabel.Size = UDim2.new(0, 120, 0, 20)
+PredictionLabel.Position = UDim2.new(0, 15, 0, 90)
+PredictionLabel.BackgroundTransparency = 1
+PredictionLabel.Text = "Prediction:"
+PredictionLabel.TextColor3 = Color3.new(1,1,1)
+PredictionLabel.Font = Enum.Font.Gotham
+PredictionLabel.TextSize = 16
+PredictionLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local PredictionBox = Instance.new("TextBox", MainFrame)
+PredictionBox.Size = UDim2.new(0, 120, 0, 30)
+PredictionBox.Position = UDim2.new(0, 15, 0, 110)
+PredictionBox.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+PredictionBox.TextColor3 = Color3.new(1,1,1)
+PredictionBox.Font = Enum.Font.Gotham
+PredictionBox.TextSize = 16
+PredictionBox.Text = "0"
+
+local StatusLabel = Instance.new("TextLabel", MainFrame)
+StatusLabel.Size = UDim2.new(1, -10, 0, 20)
+StatusLabel.Position = UDim2.new(0, 10, 1, -25)
+StatusLabel.BackgroundTransparency = 0.5
+StatusLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+StatusLabel.TextColor3 = Color3.new(1,1,1)
+StatusLabel.Font = Enum.Font.GothamBold
+StatusLabel.TextSize = 14
+StatusLabel.Text = "Lock-On: Off | Prediction: 0"
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- State
+local lockedPlayer = nil
+local prediction = 0
+
+local function updateStatus()
+    StatusLabel.Text = ("Lock-On: %s | Prediction: %.2f"):format(
+        lockedPlayer and lockedPlayer.Name or "Off",
+        prediction)
+end
+
+PredictionBox.FocusLost:Connect(function()
+    local val = tonumber(PredictionBox.Text)
+    if val then
+        prediction = val
+    else
+        PredictionBox.Text = tostring(prediction)
+    end
+    updateStatus()
+end)
+
+-- Find closest player to mouse within radius (in pixels)
+local function getClosestPlayerWithinRadius(radius)
+    local closestPlayer = nil
+    local shortestDistance = radius
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChildOfClass("Humanoid") then
+            local hrp = player.Character.HumanoidRootPart
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToScreenPoint(hrp.Position)
+                if onScreen then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+                    if dist < shortestDistance then
+                        shortestDistance = dist
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+-- Q key toggles lock on nearest player near mouse (within 100 pixels)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Q then
+        if lockedPlayer then
+            lockedPlayer = nil -- unlock
+        else
+            lockedPlayer = getClosestPlayerWithinRadius(100)
+        end
+        updateStatus()
+    end
+end)
+
+-- Camera lock-on logic
+RunService.RenderStepped:Connect(function()
+    if lockedPlayer and lockedPlayer.Character and lockedPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = lockedPlayer.Character.HumanoidRootPart
+        local predictedPos = hrp.Position + (hrp.Velocity * prediction)
+        local camPos = Camera.CFrame.Position
+        local lookVector = (predictedPos - camPos).Unit
+        Camera.CFrame = CFrame.new(camPos, camPos + lookVector)
+    end
+end)
+
+updateStatus()
